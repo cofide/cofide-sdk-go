@@ -31,6 +31,7 @@ type SPIFFEID struct {
 	id spiffeid.ID
 }
 
+// NewID creates a SPIFFEID from a trust domain and key-value map.
 func NewID(trustDomain string, kv map[string]string) (*SPIFFEID, error) {
 	// sort the keys to have a deterministic order
 	keys := make([]string, 0, len(kv))
@@ -61,6 +62,7 @@ func NewID(trustDomain string, kv map[string]string) (*SPIFFEID, error) {
 	return &SPIFFEID{id: id}, nil
 }
 
+// MustNewID is the same as NewID, but panics on error.
 func MustNewID(trustDomain string, kv map[string]string) *SPIFFEID {
 	id, err := NewID(trustDomain, kv)
 	if err != nil {
@@ -69,6 +71,7 @@ func MustNewID(trustDomain string, kv map[string]string) *SPIFFEID {
 	return id
 }
 
+// ParseID parses a SPIFFE ID provided as a string and returns a SPIFFEID.
 func ParseID(id string) (*SPIFFEID, error) {
 	upstreamID, err := spiffeid.FromString(id)
 	if err != nil {
@@ -83,6 +86,7 @@ func ParseID(id string) (*SPIFFEID, error) {
 	return svid, nil
 }
 
+// MustParseID is the same as ParseID, but panics on error.
 func MustParseID(id string) *SPIFFEID {
 	svid, err := ParseID(id)
 	if err != nil {
@@ -91,6 +95,7 @@ func MustParseID(id string) *SPIFFEID {
 	return svid
 }
 
+// ParsePath parses the path component of a SPIFFEID and returns it as a map.
 func (s *SPIFFEID) ParsePath() (map[string]string, error) {
 	path := s.id.Path()
 	path = strings.Trim(path, "/")
@@ -108,14 +113,17 @@ func (s *SPIFFEID) ParsePath() (map[string]string, error) {
 	return kv, nil
 }
 
+// TrustDomain returns the trust domain of a SPIFFEID as a string.
 func (s *SPIFFEID) TrustDomain() string {
 	return s.id.TrustDomain().String()
 }
 
+// String returns a string representation of the SPIFFEID.
 func (s *SPIFFEID) String() string {
 	return s.id.String()
 }
 
+// ToSpiffeID returns a [spiffeid.ID] representation of the SPIFFEID.
 func (s *SPIFFEID) ToSpiffeID() spiffeid.ID {
 	return s.id
 }

@@ -13,8 +13,14 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 )
 
+// MatchFunc is a function that can be called to determine whether the path
+// component of a SPIFFEID matches a given constraint. The function should
+// return nil if the constraint matches, or an error otherwise.
 type MatchFunc func(kv map[string]string) error
 
+// Matches applies a set of MatchFunc functions to a SPIFFEID and returns the
+// combined match result. If no MatchFunc returns an error, then Match returns
+// nil. Otherwise an error is returned.
 func (s *SPIFFEID) Matches(funcs ...MatchFunc) error {
 	kv, err := s.ParsePath()
 	if err != nil {
@@ -31,6 +37,8 @@ func (s *SPIFFEID) Matches(funcs ...MatchFunc) error {
 	return nil
 }
 
+// AuthorizeMatch returns a [tlsconfig.Authorizer] that authorizes an ID when
+// it matches all of the provided MatchFunc.
 func AuthorizeMatch(funcs ...MatchFunc) tlsconfig.Authorizer {
 	return func(id spiffeid.ID, verifiedChains [][]*x509.Certificate) error {
 		sid, err := ParseID(id.String())
@@ -46,6 +54,8 @@ func AuthorizeMatch(funcs ...MatchFunc) tlsconfig.Authorizer {
 	}
 }
 
+// Equals returns a MatchFunc that matches any ID that contains the specified
+// key/value pair.
 func Equals(key, value string) MatchFunc {
 	return func(kv map[string]string) error {
 		if val, ok := kv[key]; !ok || val != value {
@@ -56,6 +66,8 @@ func Equals(key, value string) MatchFunc {
 	}
 }
 
+// IsEmptyKey returns a MatchFunc that matches any ID that contains the
+// specified key with an empty value.
 func IsEmpty(key string) MatchFunc {
 	return func(kv map[string]string) error {
 		if kv[key] != "" {
@@ -66,6 +78,8 @@ func IsEmpty(key string) MatchFunc {
 	}
 }
 
+// IsNotEmpty returns a MatchFunc that matches any ID that contains the
+// specified key with a non-empty value.
 func IsNotEmpty(key string) MatchFunc {
 	return func(kv map[string]string) error {
 		if kv[key] == "" {
@@ -76,6 +90,8 @@ func IsNotEmpty(key string) MatchFunc {
 	}
 }
 
+// MatchGlob returns a MatchFunc that matches any ID that contains the
+// specified key with a value matching the specified glob pattern.
 func MatchGlob(key, globStr string) MatchFunc {
 	return func(kv map[string]string) error {
 		g, err := glob.Compile(globStr)
@@ -93,6 +109,8 @@ func MatchGlob(key, globStr string) MatchFunc {
 	}
 }
 
+// Or returns a MatchFunc that combines the specified MatchFunc using a logical
+// OR.
 func Or(funcs ...MatchFunc) MatchFunc {
 	return func(kv map[string]string) error {
 		errs := make([]error, 0, len(funcs))
@@ -117,6 +135,8 @@ func Or(funcs ...MatchFunc) MatchFunc {
 	}
 }
 
+// Not returns a MatchFunc that logically inverts the result of the specified
+// MatchFunc.
 func Not(f MatchFunc) MatchFunc {
 	return func(kv map[string]string) error {
 		err := f(kv)
