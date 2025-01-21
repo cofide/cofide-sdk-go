@@ -11,31 +11,21 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
-// SPIFFEID is an **opinionated** implementation of the upstream spiffeid.ID
-// it builds on top of the SPIFFE ID however carries a strong key-value based
-// approach to encode the ID with its information.
-// URLs are here used as a string representation of trust data as this can be
-// used inside X.509 data easily as URI SAN.
+// SPIFFEID is an **opinionated** implementation of the upstream [spiffeid.ID].
+// It builds on top of the SPIFFE ID however carries a strong key-value based
+// approach to encode the ID with information.
+// URLs are used as a string representation of trust data as this can be used
+// inside X.509 data easily as URI SAN.
 //
-// the data is encoded  as following:
+// The data is encoded as follows:
 // spiffe://<trust domain>/<key 1>/<value 1>/<key 2>/<value 2>
+//
+// For example:
+// spiffe://foo.example.org/ns/production/sa/billing
 //
 // Verifying these IDs should be done by comparing the trust domain and preferably a minimum set of keys.
 // If the SPIFFE ID holds (new) keys that are not known to the verifier, the verifier should ignore these keys.
 // This allows for a flexible way to encode data in the SPIFFE ID without breaking the verification.
-//
-// There are a following set of default keys that is recommended be encoded when attested:
-//
-// Local workloads:
-// - uid (user id of caller)
-// - gid (user group id of caller)
-// - pid (process id)
-// - bin (binary name, if available)
-//
-// Kubernetes workloads:
-// - ns (namespace)
-// - sa (service account)
-// - deploy (deployment name)
 type SPIFFEID struct {
 	// SPIFFE ID
 	id spiffeid.ID
