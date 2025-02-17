@@ -87,14 +87,16 @@ func NewClient(opts ...ClientOption) *Client {
 	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
 
 	if os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true" {
-		xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
-			ServerURI: "xds://localhost:18001",
-			NodeID:    "node",
-		})
-		if err != nil {
-			return nil
+		if xdsServer := os.Getenv("EXPERIMENTAL_XDS_SERVER_URI"); xdsServer != "" {
+			xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
+				ServerURI: xdsServer,
+				NodeID:    "node",
+			})
+			if err != nil {
+				return nil
+			}
+			c.Transport = transport.NewCofideTransport(xdsClient, tlsConfig)
 		}
-		c.Transport = transport.NewCofideTransport(xdsClient, tlsConfig)
 	} else {
 		c.Transport = &http.Transport{
 			TLSClientConfig: tlsConfig,
