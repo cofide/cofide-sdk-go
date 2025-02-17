@@ -29,7 +29,7 @@ type XDSClientConfig struct {
 	NodeID    string
 }
 
-func NewDummyXDSClient(ctx context.Context, cfg XDSClientConfig) (*XDSClient, error) {
+func NewXDSClient(ctx context.Context, cfg XDSClientConfig) (*XDSClient, error) {
 	conn, err := grpc.NewClient(
 		cfg.ServerURI,
 		grpc.WithTransportCredentials(insecure.NewCredentials()), // insecure connection
