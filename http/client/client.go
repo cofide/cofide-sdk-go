@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/cofide/cofide-sdk-go/internal/spirehelper"
+	"github.com/cofide/cofide-sdk-go/internal/transport"
+	"github.com/cofide/cofide-sdk-go/internal/xds"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 )
 
@@ -22,7 +24,6 @@ type Client struct {
 
 	// Transport specifies the mechanism by which individual
 	// HTTP requests are made.
-	// If nil, DefaultTransport is used.
 	Transport http.RoundTripper
 
 	// CheckRedirect specifies the policy for handling redirects.
@@ -72,7 +73,6 @@ type Client struct {
 
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
-
 		SpireHelper: &spirehelper.SpireHelper{
 			Ctx:        context.Background(),
 			SpireAddr:  "unix:///tmp/spire.sock",
@@ -82,6 +82,23 @@ func NewClient(opts ...ClientOption) *Client {
 
 	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
 		c.SpireAddr = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+	}
+
+	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
+
+	if os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true" {
+		xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
+			ServerURI: "xds://localhost:18001",
+			NodeID:    "node",
+		})
+		if err != nil {
+			return nil
+		}
+		c.Transport = transport.NewCofideTransport(xdsClient, tlsConfig)
+	} else {
+		c.Transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+		}
 	}
 
 	for _, opt := range opts {
@@ -100,12 +117,8 @@ func (c *Client) getHttp() *http.Client {
 		return c.http
 	}
 
-	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
-
 	c.http = &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
+		Transport:     c.Transport,
 		CheckRedirect: c.CheckRedirect,
 		Jar:           c.Jar,
 		Timeout:       c.Timeout,
