@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
-	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -13,20 +13,31 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
 )
 
 type XDSClient struct {
-	conn   *grpc.ClientConn
-	client discovery.AggregatedDiscoveryServiceClient
-	nodeID string
+	conn      *grpc.ClientConn
+	client    discovery.AggregatedDiscoveryServiceClient
+	nodeID    string
+	endpoints sync.Map // service -> []Endpoint
+	watching  sync.Map // service -> *sync.Once
 }
 
 type XDSClientConfig struct {
 	ServerURI string
 	Creds     grpc.DialOption
 	NodeID    string
+}
+
+type Endpoint struct {
+	Host   string
+	Port   int
+	Weight int
+}
+
+type ClusterUpdate struct {
+	Service   string
+	Endpoints []Endpoint
 }
 
 func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
@@ -38,71 +49,25 @@ func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
 		return nil, err
 	}
 
-	return &XDSClient{
+	client := &XDSClient{
 		conn:   conn,
 		client: discovery.NewAggregatedDiscoveryServiceClient(conn),
 		nodeID: cfg.NodeID,
-	}, nil
+	}
+
+	return client, nil
 }
 
-func (c *XDSClient) GetClusters() ([]string, error) {
-	ctx := context.Background()
-
-	// Create ADS stream
+func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 	stream, err := c.client.StreamAggregatedResources(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stream: %v", err)
+		slog.Error("failed to create xDS stream", "error", err)
+		return
 	}
 
 	defer func() {
 		if err := stream.CloseSend(); err != nil {
-			slog.Error("error closing stream", "error", err)
-		}
-	}()
-
-	// Send CDS request
-	req := &discovery.DiscoveryRequest{
-		Node: &core.Node{
-			Id: c.nodeID,
-		},
-		TypeUrl: resource.ClusterType, // Type URL for clusters
-	}
-	if err := stream.Send(req); err != nil {
-		return nil, fmt.Errorf("failed to send request: %v", err)
-	}
-
-	// Wait for response
-	resp, err := stream.Recv()
-	if err != nil {
-		return nil, fmt.Errorf("failed to receive response: %v", err)
-	}
-
-	// Extract cluster names
-	var clusterNames []string
-	for _, res := range resp.Resources {
-		var cluster cluster.Cluster
-		if err := anypb.UnmarshalTo(res, &cluster, proto.UnmarshalOptions{}); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal cluster: %v", err)
-		}
-		clusterNames = append(clusterNames, cluster.Name)
-	}
-
-	return clusterNames, nil
-}
-
-func (c *XDSClient) GetClusterEndpoints() (map[string]*endpoint.ClusterLoadAssignment, error) {
-	// Implementation to fetch endpoints via xDS
-	ctx := context.Background()
-
-	// Create ADS stream
-	stream, err := c.client.StreamAggregatedResources(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stream: %v", err)
-	}
-
-	defer func() {
-		if err := stream.CloseSend(); err != nil {
-			slog.Error("error closing stream", "error", err)
+			slog.Error("error closing xDS stream", "error", err)
 		}
 	}()
 
@@ -111,26 +76,63 @@ func (c *XDSClient) GetClusterEndpoints() (map[string]*endpoint.ClusterLoadAssig
 		Node: &core.Node{
 			Id: c.nodeID,
 		},
-		TypeUrl: resource.EndpointType, // Type URL for endpoints
+		TypeUrl:       resource.EndpointType, // Type URL for endpoints
+		ResourceNames: []string{serviceName},
 	}
 	if err := stream.Send(req); err != nil {
-		return nil, fmt.Errorf("failed to send request: %v", err)
+		slog.Error("failed to send xDS discovery request", "error", err)
+		return
 	}
 
-	// Wait for response
-	resp, err := stream.Recv()
-	if err != nil {
-		return nil, fmt.Errorf("failed to receive response: %v", err)
-	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			resp, err := stream.Recv()
+			if err != nil {
+				slog.Error("failed to receive xDS discovery response", "error", err)
+				return
+			}
 
-	clas := make(map[string]*endpoint.ClusterLoadAssignment)
-	for _, res := range resp.Resources {
-		cla := &endpoint.ClusterLoadAssignment{}
-		if err := res.UnmarshalTo(cla); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal endpoint: %v", err)
+			// Update endpoints directly in cache
+			if len(resp.Resources) > 0 {
+				var cla endpoint.ClusterLoadAssignment
+				if err := resp.Resources[0].UnmarshalTo(&cla); err != nil {
+					slog.Error("failed to unmarshal endpoints", "error", err)
+					continue
+				}
+
+				endpoints := make([]Endpoint, 0)
+				for _, locality := range cla.Endpoints {
+					for _, endpoint := range locality.LbEndpoints {
+						addr := endpoint.GetEndpoint().Address.GetSocketAddress()
+						endpoints = append(endpoints, Endpoint{
+							Host:   addr.GetAddress(),
+							Port:   int(addr.GetPortValue()),
+							Weight: int(endpoint.GetLoadBalancingWeight().GetValue()),
+						})
+					}
+				}
+				c.endpoints.Store(serviceName, endpoints)
+			}
 		}
-		clas[cla.ClusterName] = cla
+
+	}
+}
+
+func (c *XDSClient) GetEndpoints(service string) ([]Endpoint, error) {
+	// First check if we already have endpoints
+	if eps, ok := c.endpoints.Load(service); ok {
+		return eps.([]Endpoint), nil
 	}
 
-	return clas, nil
+	// Check if we're already watching, using sync.Once per service
+	watchOnce, _ := c.watching.LoadOrStore(service, &sync.Once{})
+	watchOnce.(*sync.Once).Do(func() {
+		go c.watchEndpoints(context.Background(), service)
+	})
+
+	// Return empty for now, next request will get the endpoints
+	return nil, fmt.Errorf("endpoints not yet discovered for %s", service)
 }

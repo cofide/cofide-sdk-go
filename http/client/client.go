@@ -2,16 +2,19 @@ package cofide_http
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
 
 	"github.com/cofide/cofide-sdk-go/internal/spirehelper"
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+
 	"github.com/cofide/cofide-sdk-go/internal/transport"
 	"github.com/cofide/cofide-sdk-go/internal/xds"
-	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 )
 
 type Client struct {
@@ -73,41 +76,56 @@ type Client struct {
 
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
-		SpireHelper: &spirehelper.SpireHelper{
-			Ctx:        context.Background(),
-			SpireAddr:  "unix:///tmp/spire.sock",
-			Authorizer: tlsconfig.AuthorizeAny(),
-		},
-	}
-
-	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
-		c.SpireAddr = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+		SpireHelper: newSpireHelper(),
 	}
 
 	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
-
-	if os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true" {
-		if xdsServer := os.Getenv("EXPERIMENTAL_XDS_SERVER_URI"); xdsServer != "" {
-			xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
-				ServerURI: xdsServer,
-				NodeID:    "node",
-			})
-			if err != nil {
-				return nil
-			}
-			c.Transport = transport.NewCofideTransport(xdsClient, tlsConfig)
-		}
-	} else {
-		c.Transport = &http.Transport{
-			TLSClientConfig: tlsConfig,
-		}
-	}
+	c.Transport = createTransport(tlsConfig)
 
 	for _, opt := range opts {
 		opt(c)
 	}
 
 	return c
+}
+
+func createTransport(tlsConfig *tls.Config) http.RoundTripper {
+	if !isXDSEnabled() {
+		return &http.Transport{TLSClientConfig: tlsConfig}
+	}
+
+	xdsServer := os.Getenv("EXPERIMENTAL_XDS_SERVER_URI")
+	if xdsServer == "" {
+		return &http.Transport{TLSClientConfig: tlsConfig}
+	}
+
+	xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
+		ServerURI: xdsServer,
+		NodeID:    "node",
+	})
+	if err != nil {
+		slog.Error("failed to create xDS client, falling back to default transport", "error", err)
+		return &http.Transport{TLSClientConfig: tlsConfig}
+	}
+
+	return transport.NewCofideTransport(xdsClient, tlsConfig)
+}
+
+func isXDSEnabled() bool {
+	return os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true"
+}
+
+func newSpireHelper() *spirehelper.SpireHelper {
+	spireAddr := "unix:///tmp/spire.sock"
+	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
+		spireAddr = addr
+	}
+
+	return &spirehelper.SpireHelper{
+		Ctx:        context.Background(),
+		SpireAddr:  spireAddr,
+		Authorizer: tlsconfig.AuthorizeAny(),
+	}
 }
 
 func (c *Client) getHttp() *http.Client {

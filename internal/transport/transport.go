@@ -2,18 +2,15 @@ package transport
 
 import (
 	"crypto/tls"
-	"net"
+	"fmt"
 	"net/http"
-	"sync"
-	"time"
 
 	"github.com/cofide/cofide-sdk-go/internal/xds"
 )
 
 type CofideTransport struct {
 	xdsClient     *xds.XDSClient
-	endpointCache sync.Map // serviceName -> endpoint
-	BaseTransport http.RoundTripper
+	baseTransport http.RoundTripper
 	tlsConfig     *tls.Config
 }
 
@@ -21,32 +18,31 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTra
 	return &CofideTransport{
 		xdsClient:     client,
 		tlsConfig:     tlsConfig,
-		BaseTransport: http.DefaultTransport,
+		baseTransport: http.DefaultTransport,
 	}
 }
 
 func (t *CofideTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	var transport http.RoundTripper
-	if t.BaseTransport != nil {
-		transport = t.BaseTransport
-	} else {
-		transport = http.DefaultTransport
+	service := req.URL.Hostname()
+
+	endpoints, err := t.xdsClient.GetEndpoints(service)
+	if err != nil {
+		// Fall back to direct call
+		return t.baseTransport.RoundTrip(req)
 	}
 
-	if t.tlsConfig != nil {
-		// Create a new transport with the custom TLS config.
-		transport = &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-			TLSClientConfig:       t.tlsConfig,
-		}
-	}
-	return transport.RoundTrip(req)
+	// Clone request to modify it
+	outReq := req.Clone(req.Context())
+
+	// Select endpoint (simple round-robin for now)
+	endpoint := selectEndpoint(endpoints)
+	outReq.URL.Host = fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port)
+
+	return t.baseTransport.RoundTrip(outReq)
+}
+
+func selectEndpoint(endpoints []xds.Endpoint) xds.Endpoint {
+	// Simple round-robin for now
+	// TODO: could be enhanced with weighted selection
+	return endpoints[0]
 }
