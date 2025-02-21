@@ -3,14 +3,14 @@ module github.com/cofide/cofide-sdk-go
 go 1.23.3
 
 require (
-	github.com/envoyproxy/go-control-plane v0.13.1
+	github.com/envoyproxy/go-control-plane v0.13.4
+	github.com/envoyproxy/go-control-plane/envoy v1.32.3
 	github.com/gobwas/glob v0.2.3
 	github.com/spiffe/go-spiffe/v2 v2.5.0
 )
 
 require (
 	cel.dev/expr v0.19.0 // indirect
-	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.1.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
