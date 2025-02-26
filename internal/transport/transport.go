@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -12,49 +13,48 @@ import (
 type CofideTransport struct {
 	xdsClient     *xds.XDSClient
 	baseTransport http.RoundTripper
-	tlsConfig     *tls.Config
 }
 
 func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTransport {
-	return &CofideTransport{
-		xdsClient: client,
-		tlsConfig: tlsConfig,
-		baseTransport: &http.Transport{
-			DialTLS: func(network, addr string) (net.Conn, error) {
-				// Extract hostname from addr for SNI
-				host, _, err := net.SplitHostPort(addr)
-				if err != nil {
-					host = addr
-				}
+	// Create a transport with a custom dialer
+	baseTransport := &http.Transport{
+		TLSClientConfig: tlsConfig,
+		// Create a custom dialer that handles hostname resolution
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Extract host and port
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				// Fall back to standard dialing
+				dialer := &net.Dialer{}
+				return dialer.DialContext(ctx, network, addr)
+			}
 
-				// Check if we have a custom resolution for this host
-				endpoints, err := client.GetEndpoints(host)
-				if err == nil && len(endpoints) > 0 {
-					endpoint := selectEndpoint(endpoints)
+			// Try to resolve endpoint
+			endpoints, err := client.GetEndpoints(host)
+			if err != nil || len(endpoints) == 0 {
+				// Fall back to standard dialing
+				dialer := &net.Dialer{}
+				return dialer.DialContext(ctx, network, addr)
+			}
 
-					// Clone the TLS config to avoid modifying the original
-					customTLSConfig := tlsConfig.Clone()
+			// Select endpoint
+			endpoint := selectEndpoint(endpoints)
 
-					// Set ServerName for SNI to the original hostname
-					customTLSConfig.ServerName = host
-
-					// Connect to resolved IP:port instead but use original hostname for SNI
-					targetAddr := fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port)
-					conn, err := tls.Dial(network, targetAddr, customTLSConfig)
-					return conn, err
-				}
-
-				// Fall back to standard behavior with the original TLS config
-				// but make sure ServerName is set correctly
-				customTLSConfig := tlsConfig.Clone()
-				customTLSConfig.ServerName = host
-				return tls.Dial(network, addr, customTLSConfig)
-			},
+			// Dial using resolved endpoint
+			dialer := &net.Dialer{}
+			return dialer.DialContext(ctx, network, fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port))
 		},
+	}
+
+	return &CofideTransport{
+		xdsClient:     client,
+		baseTransport: baseTransport,
 	}
 }
 
 func (t *CofideTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// The ServerName in TLS config will be automatically set to req.URL.Hostname()
+	// by the http.Transport implementation
 	return t.baseTransport.RoundTrip(req)
 }
 
