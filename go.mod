@@ -1,6 +1,6 @@
 module github.com/cofide/cofide-sdk-go
 
-go 1.23.3
+go 1.24.0
 
 require (
 	github.com/gobwas/glob v0.2.3
