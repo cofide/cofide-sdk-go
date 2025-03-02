@@ -80,8 +80,6 @@ func NewClient(opts ...ClientOption) *Client {
 		SpireHelper: newSpireHelper(),
 	}
 
-	c.EnsureSpire()
-
 	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
 	slog.Info("cofide_client", "tlsConfig", tlsConfig)
 
@@ -90,6 +88,9 @@ func NewClient(opts ...ClientOption) *Client {
 	for _, opt := range opts {
 		opt(c)
 	}
+
+	c.EnsureSpire()
+	c.WaitReady()
 
 	return c
 }
