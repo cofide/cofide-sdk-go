@@ -12,6 +12,7 @@ import (
 
 	"github.com/cofide/cofide-sdk-go/internal/spirehelper"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 
 	"github.com/cofide/cofide-sdk-go/internal/transport"
 	"github.com/cofide/cofide-sdk-go/internal/xds"
@@ -80,7 +81,7 @@ func NewClient(opts ...ClientOption) *Client {
 	}
 
 	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
-	c.Transport = createTransport(tlsConfig)
+	c.Transport = createTransport(tlsConfig, c.X509Source)
 
 	for _, opt := range opts {
 		opt(c)
@@ -89,7 +90,7 @@ func NewClient(opts ...ClientOption) *Client {
 	return c
 }
 
-func createTransport(tlsConfig *tls.Config) http.RoundTripper {
+func createTransport(tlsConfig *tls.Config, x509Source *workloadapi.X509Source) http.RoundTripper {
 	if !isXDSEnabled() {
 		return &http.Transport{TLSClientConfig: tlsConfig}
 	}
@@ -108,7 +109,7 @@ func createTransport(tlsConfig *tls.Config) http.RoundTripper {
 		return &http.Transport{TLSClientConfig: tlsConfig}
 	}
 
-	return transport.NewCofideTransport(xdsClient, tlsConfig)
+	return transport.NewCofideTransport(xdsClient, tlsConfig, x509Source)
 }
 
 func isXDSEnabled() bool {
