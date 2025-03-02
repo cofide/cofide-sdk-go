@@ -81,6 +81,8 @@ func NewClient(opts ...ClientOption) *Client {
 	}
 
 	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
+	slog.Info("cofide_client", "tlsConfig", tlsConfig)
+
 	c.Transport = createTransport(tlsConfig, c.X509Source)
 
 	for _, opt := range opts {
