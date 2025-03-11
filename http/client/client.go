@@ -1,3 +1,6 @@
+// Copyright 2024 Cofide Limited.
+// SPDX-License-Identifier: Apache-2.0
+
 package cofide_http
 
 import (
@@ -28,6 +31,7 @@ type Client struct {
 
 	// Transport specifies the mechanism by which individual
 	// HTTP requests are made.
+	// If nil, DefaultTransport is used.
 	Transport http.RoundTripper
 
 	// CheckRedirect specifies the policy for handling redirects.
