@@ -80,17 +80,17 @@ func NewClient(opts ...ClientOption) *Client {
 		SpireHelper: newSpireHelper(),
 	}
 
-	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
-	slog.Info("cofide_client", "tlsConfig", tlsConfig)
-
-	c.Transport = createTransport(tlsConfig, c.X509Source)
-
 	for _, opt := range opts {
 		opt(c)
 	}
 
+	// Ensure SPIRE is ready in order to use the x509Source and craft the
+	// tlsConfig for the custom transport
 	c.EnsureSpire()
 	c.WaitReady()
+
+	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
+	c.Transport = createTransport(tlsConfig, c.X509Source)
 
 	return c
 }
