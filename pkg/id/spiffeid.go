@@ -127,3 +127,8 @@ func (s *SPIFFEID) String() string {
 func (s *SPIFFEID) ToSpiffeID() spiffeid.ID {
 	return s.id
 }
+
+func FromSpiffeID(sid spiffeid.ID) *SPIFFEID {
+	id := &SPIFFEID{id: sid}
+	return id
+}
