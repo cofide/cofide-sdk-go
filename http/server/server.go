@@ -87,30 +87,37 @@ func (s *Server) getHttp() *http.Server {
 func (w *Server) Close() error {
 	return w.getHttp().Close()
 }
+
 func (w *Server) ListenAndServe() error {
 	return w.ListenAndServeTLS("", "") // certs and keys verridden by SPIRE
 }
+
 func (w *Server) ListenAndServeTLS(_, _ string) error {
 	w.EnsureSpire()
 	w.WaitReady()
 	return w.getHttp().ListenAndServeTLS("", "") // certs and keys verridden by SPIRE
 }
+
 func (w *Server) RegisterOnShutdown(f func()) {
 	w.EnsureSpire()
 	w.WaitReady()
 	w.getHttp().RegisterOnShutdown(f)
 }
+
 func (w *Server) Serve(l net.Listener) error {
 	return w.ServeTLS(l, "", "") // certs and keys verridden by SPIRE
 }
+
 func (w *Server) ServeTLS(l net.Listener, _, _ string) error {
 	w.EnsureSpire()
 	w.WaitReady()
 	return w.getHttp().ServeTLS(l, "", "") // certs and keys verridden by SPIRE
 }
+
 func (w *Server) SetKeepAlivesEnabled(v bool) {
 	w.getHttp().SetKeepAlivesEnabled(v)
 }
+
 func (w *Server) Shutdown(ctx context.Context) error {
 	return w.getHttp().Shutdown(ctx)
 }
