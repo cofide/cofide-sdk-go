@@ -21,11 +21,13 @@ import (
 	"github.com/cofide/cofide-sdk-go/internal/xds"
 )
 
+const defaultSPIRESocketAddr = "unix:///tmp/spire.sock"
+
 type Client struct {
 	// internal HTTP client
 	http *http.Client
 
-	*spirehelper.SpireHelper
+	*spirehelper.SPIREHelper
 
 	/** FROM THIS POINT ALL PROPERTIES COME FROM net/http **/
 
@@ -81,7 +83,7 @@ type Client struct {
 
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
-		SpireHelper: newSpireHelper(),
+		SPIREHelper: newSPIREHelper(),
 	}
 
 	for _, opt := range opts {
@@ -90,7 +92,7 @@ func NewClient(opts ...ClientOption) *Client {
 
 	// Ensure SPIRE is ready in order to use the x509Source and craft the
 	// tlsConfig for the custom transport
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
@@ -125,15 +127,15 @@ func isXDSEnabled() bool {
 	return os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true"
 }
 
-func newSpireHelper() *spirehelper.SpireHelper {
-	spireAddr := "unix:///tmp/spire.sock"
+func newSPIREHelper() *spirehelper.SPIREHelper {
+	spireAddr := defaultSPIRESocketAddr
 	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
 		spireAddr = addr
 	}
 
-	return &spirehelper.SpireHelper{
+	return &spirehelper.SPIREHelper{
 		Ctx:        context.Background(),
-		SpireAddr:  spireAddr,
+		SPIREAddr:  spireAddr,
 		Authorizer: tlsconfig.AuthorizeAny(),
 	}
 }
@@ -175,7 +177,7 @@ func (c *Client) CloseIdleConnections() {
 }
 
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	if req.URL.Scheme == "http" {
@@ -186,28 +188,28 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Client) Get(url string) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().Get(secureURL(url))
 }
 
 func (c *Client) Head(url string) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().Head(secureURL(url))
 }
 
 func (c *Client) Post(url, contentType string, body io.Reader) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().Post(secureURL(url), contentType, body)
 }
 
 func (c *Client) PostForm(url string, data url.Values) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().PostForm(secureURL(url), data)

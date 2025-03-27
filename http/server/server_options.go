@@ -11,9 +11,9 @@ import (
 
 type ServerOption func(*Server)
 
-func WithSpireAddress(addr string) ServerOption {
+func WithSPIREAddress(addr string) ServerOption {
 	return func(h *Server) {
-		h.SpireAddr = addr
+		h.SPIREAddr = addr
 	}
 }
 

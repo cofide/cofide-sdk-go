@@ -11,9 +11,9 @@ import (
 
 type ClientOption func(*Client)
 
-func WithSpireAddress(addr string) ClientOption {
+func WithSPIREAddress(addr string) ClientOption {
 	return func(h *Client) {
-		h.SpireAddr = addr
+		h.SPIREAddr = addr
 	}
 }
 
