@@ -5,7 +5,9 @@ package cofide_http
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,13 +15,19 @@ import (
 
 	"github.com/cofide/cofide-sdk-go/internal/spirehelper"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
+
+	"github.com/cofide/cofide-sdk-go/internal/transport"
+	"github.com/cofide/cofide-sdk-go/internal/xds"
 )
+
+const defaultSPIRESocketAddr = "unix:///tmp/spire.sock"
 
 type Client struct {
 	// internal HTTP client
 	http *http.Client
 
-	*spirehelper.SpireHelper
+	*spirehelper.SPIREHelper
 
 	/** FROM THIS POINT ALL PROPERTIES COME FROM net/http **/
 
@@ -75,23 +83,61 @@ type Client struct {
 
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
-
-		SpireHelper: &spirehelper.SpireHelper{
-			Ctx:        context.Background(),
-			SpireAddr:  "unix:///tmp/spire.sock",
-			Authorizer: tlsconfig.AuthorizeAny(),
-		},
-	}
-
-	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
-		c.SpireAddr = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+		SPIREHelper: newSPIREHelper(),
 	}
 
 	for _, opt := range opts {
 		opt(c)
 	}
 
+	// Ensure SPIRE is ready in order to use the x509Source and craft the
+	// tlsConfig for the custom transport
+	c.EnsureSPIRE()
+	c.WaitReady()
+
+	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
+	c.Transport = createTransport(tlsConfig, c.X509Source)
+
 	return c
+}
+
+func createTransport(tlsConfig *tls.Config, x509Source *workloadapi.X509Source) http.RoundTripper {
+	if !isXDSEnabled() {
+		return &http.Transport{TLSClientConfig: tlsConfig}
+	}
+
+	xdsServer := os.Getenv("EXPERIMENTAL_XDS_SERVER_URI")
+	if xdsServer == "" {
+		return &http.Transport{TLSClientConfig: tlsConfig}
+	}
+
+	xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
+		ServerURI: xdsServer,
+		NodeID:    "node",
+	})
+	if err != nil {
+		slog.Error("failed to create xDS client, falling back to default transport", "error", err)
+		return &http.Transport{TLSClientConfig: tlsConfig}
+	}
+
+	return transport.NewCofideTransport(xdsClient, tlsConfig, x509Source)
+}
+
+func isXDSEnabled() bool {
+	return os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true"
+}
+
+func newSPIREHelper() *spirehelper.SPIREHelper {
+	spireAddr := defaultSPIRESocketAddr
+	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
+		spireAddr = addr
+	}
+
+	return &spirehelper.SPIREHelper{
+		Ctx:        context.Background(),
+		SPIREAddr:  spireAddr,
+		Authorizer: tlsconfig.AuthorizeAny(),
+	}
 }
 
 func (c *Client) getHttp() *http.Client {
@@ -103,12 +149,8 @@ func (c *Client) getHttp() *http.Client {
 		return c.http
 	}
 
-	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
-
 	c.http = &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
+		Transport:     c.Transport,
 		CheckRedirect: c.CheckRedirect,
 		Jar:           c.Jar,
 		Timeout:       c.Timeout,
@@ -135,7 +177,7 @@ func (c *Client) CloseIdleConnections() {
 }
 
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	if req.URL.Scheme == "http" {
@@ -146,28 +188,28 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Client) Get(url string) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().Get(secureURL(url))
 }
 
 func (c *Client) Head(url string) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().Head(secureURL(url))
 }
 
 func (c *Client) Post(url, contentType string, body io.Reader) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().Post(secureURL(url), contentType, body)
 }
 
 func (c *Client) PostForm(url string, data url.Values) (resp *http.Response, err error) {
-	c.EnsureSpire()
+	c.EnsureSPIRE()
 	c.WaitReady()
 
 	return c.getHttp().PostForm(secureURL(url), data)

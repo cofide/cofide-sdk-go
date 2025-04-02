@@ -14,9 +14,9 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
-type SpireHelper struct {
+type SPIREHelper struct {
 	X509Source *workloadapi.X509Source
-	SpireAddr  string
+	SPIREAddr  string
 	Ctx        context.Context
 
 	Authorizer tlsconfig.Authorizer
@@ -25,7 +25,7 @@ type SpireHelper struct {
 	backoff *backoff.Backoff
 }
 
-func (s *SpireHelper) EnsureSpire() {
+func (s *SPIREHelper) EnsureSPIRE() {
 	if s.X509Source != nil {
 		return
 	}
@@ -40,7 +40,7 @@ func (s *SpireHelper) EnsureSpire() {
 		for {
 			var err error
 
-			s.X509Source, err = workloadapi.NewX509Source(s.Ctx, workloadapi.WithClientOptions(workloadapi.WithAddr(s.SpireAddr)))
+			s.X509Source, err = workloadapi.NewX509Source(s.Ctx, workloadapi.WithClientOptions(workloadapi.WithAddr(s.SPIREAddr)))
 			if err != nil {
 				time.Sleep(s.backoff.Duration())
 				continue
@@ -61,13 +61,13 @@ func (s *SpireHelper) EnsureSpire() {
 	}()
 }
 
-func (s *SpireHelper) WaitReady() {
+func (s *SPIREHelper) WaitReady() {
 	// wait till readyCh is closed
 	<-s.readyCh
 }
 
-func (s *SpireHelper) GetIdentity() (*id.SPIFFEID, error) {
-	s.EnsureSpire()
+func (s *SPIREHelper) GetIdentity() (*id.SPIFFEID, error) {
+	s.EnsureSPIRE()
 	s.WaitReady()
 
 	// Get the SPIFFE ID from the X509Source

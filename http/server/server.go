@@ -20,21 +20,21 @@ type Server struct {
 	// consumer given http server
 	upstreamHTTP *http.Server
 
-	*spirehelper.SpireHelper
+	*spirehelper.SPIREHelper
 }
 
 func NewServer(server *http.Server, opts ...ServerOption) *Server {
 	s := &Server{
 		upstreamHTTP: server,
-		SpireHelper: &spirehelper.SpireHelper{
+		SPIREHelper: &spirehelper.SPIREHelper{
 			Ctx:        context.Background(),
-			SpireAddr:  "unix:///tmp/spire.sock",
+			SPIREAddr:  "unix:///tmp/spire.sock",
 			Authorizer: tlsconfig.AuthorizeAny(),
 		},
 	}
 
 	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
-		s.SpireAddr = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+		s.SPIREAddr = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
 	}
 
 	for _, opt := range opts {
@@ -93,13 +93,13 @@ func (w *Server) ListenAndServe() error {
 }
 
 func (w *Server) ListenAndServeTLS(_, _ string) error {
-	w.EnsureSpire()
+	w.EnsureSPIRE()
 	w.WaitReady()
 	return w.getHttp().ListenAndServeTLS("", "") // certs and keys verridden by SPIRE
 }
 
 func (w *Server) RegisterOnShutdown(f func()) {
-	w.EnsureSpire()
+	w.EnsureSPIRE()
 	w.WaitReady()
 	w.getHttp().RegisterOnShutdown(f)
 }
@@ -109,7 +109,7 @@ func (w *Server) Serve(l net.Listener) error {
 }
 
 func (w *Server) ServeTLS(l net.Listener, _, _ string) error {
-	w.EnsureSpire()
+	w.EnsureSPIRE()
 	w.WaitReady()
 	return w.getHttp().ServeTLS(l, "", "") // certs and keys verridden by SPIRE
 }
