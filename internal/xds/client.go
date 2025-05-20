@@ -74,13 +74,16 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 		}
 	}()
 
+	// Clusters in Cofide Agent xDS have a _cluster suffix
+	xdsResourceName := fmt.Sprintf("%v_cluster", serviceName)
+
 	// Send EDS request
 	req := &discovery.DiscoveryRequest{
 		Node: &core.Node{
 			Id: c.nodeID,
 		},
 		TypeUrl:       resource.EndpointType, // Type URL for endpoints
-		ResourceNames: []string{serviceName},
+		ResourceNames: []string{xdsResourceName},
 	}
 	if err := stream.Send(req); err != nil {
 		slog.Error("failed to send xDS discovery request", "error", err)
@@ -94,7 +97,10 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 		default:
 			resp, err := stream.Recv()
 			if err != nil {
-				slog.Error("failed to receive xDS discovery response", "error", err)
+				slog.Error("failed to receive xDS discovery response",
+					"service", serviceName,
+					"xdsResourceName", xdsResourceName,
+					"error", err)
 				return
 			}
 
@@ -102,7 +108,10 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 			if len(resp.Resources) > 0 {
 				var cla endpoint.ClusterLoadAssignment
 				if err := resp.Resources[0].UnmarshalTo(&cla); err != nil {
-					slog.Error("failed to unmarshal endpoints", "error", err)
+					slog.Error("failed to unmarshal ClusterLoadAssignment",
+						"service", serviceName,
+						"xdsResourceName", xdsResourceName,
+						"error", err)
 					continue
 				}
 
