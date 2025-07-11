@@ -112,7 +112,7 @@ func createTransport(tlsConfig *tls.Config) http.RoundTripper {
 		NodeID:    "node",
 	})
 	if err != nil {
-		slog.Error("failed to create xDS client, falling back to default transport", "error", err)
+		slog.Error("Failed to create xDS client, falling back to default transport", "error", err)
 		return &http.Transport{TLSClientConfig: tlsConfig}
 	}
 
