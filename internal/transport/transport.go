@@ -15,7 +15,6 @@ import (
 )
 
 type CofideTransport struct {
-	xdsClient     *xds.XDSClient
 	baseTransport http.RoundTripper
 }
 
@@ -54,7 +53,6 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTra
 	}
 
 	return &CofideTransport{
-		xdsClient:     client,
 		baseTransport: baseTransport,
 	}
 }
