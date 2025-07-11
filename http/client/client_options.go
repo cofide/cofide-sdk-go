@@ -28,3 +28,15 @@ func WithSVIDMatch(funcs ...id.MatchFunc) ClientOption {
 		h.Authorizer = id.AuthorizeMatch(funcs...)
 	}
 }
+
+func WithXDS(serverURI string) ClientOption {
+	return func(c *Client) {
+		c.xdsServerURI = serverURI
+	}
+}
+
+func WithXDSNodeID(nodeID string) ClientOption {
+	return func(c *Client) {
+		c.xdsNodeID = nodeID
+	}
+}
