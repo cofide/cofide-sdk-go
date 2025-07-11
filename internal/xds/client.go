@@ -5,10 +5,14 @@ package xds
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
+	"time"
 
+	"github.com/cofide/cofide-sdk-go/internal/backoff"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -55,20 +59,36 @@ func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
 	return client, nil
 }
 
-func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
+func (c *XDSClient) watchEndpointsRetried(ctx context.Context, serviceName string) {
+	backoff := backoff.NewBackoff()
+	for {
+		if err := c.watchEndpoints(ctx, serviceName); err == nil {
+			backoff.Reset()
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff.Duration()):
+		}
+	}
+}
+
+func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) error {
 	// Clusters in Cofide Agent xDS have a _cluster suffix
 	xdsResourceName := fmt.Sprintf("%v_cluster", serviceName)
 
 	logger := slog.With(
 		slog.String("service", serviceName),
-		slog.String("cluster", xdsResourceName),
+		slog.String("resource", xdsResourceName),
 		slog.String("node", c.nodeID),
 	)
 
+	logger.Debug("Connecting to xDS server")
 	stream, err := c.client.StreamAggregatedResources(ctx)
 	if err != nil {
 		logger.Error("Failed to create xDS stream", "error", err)
-		return
+		return err
 	}
 
 	defer func() {
@@ -87,19 +107,25 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 	}
 	if err := stream.Send(req); err != nil {
 		logger.Error("Failed to send xDS discovery request", "error", err)
-		return
+		return err
 	}
+
+	logger.Debug("Sent xDS discovery request")
 
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Debug("xDS watch complete")
-			return
+			logger.Debug("xDS watch cancelled")
+			return nil
 		default:
 			resp, err := stream.Recv()
 			if err != nil {
+				if errors.Is(err, io.EOF) {
+					logger.Debug("xDS watch stream ended")
+					return nil
+				}
 				logger.Error("Failed to receive xDS discovery response", "error", err)
-				return
+				return err
 			}
 
 			// Update endpoints directly in cache
@@ -122,12 +148,11 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 					}
 				}
 				c.endpoints.Store(serviceName, endpoints)
-				logger.Debug("Endpoints updated", slog.Any("endpoints", endpoints))
+				logger.Debug("xDS endpoints updated", slog.Any("endpoints", endpoints))
 			} else {
 				logger.Debug("No clusters in xDS response")
 			}
 		}
-
 	}
 }
 
@@ -140,7 +165,7 @@ func (c *XDSClient) GetEndpoints(service string) ([]Endpoint, error) {
 	// Check if we're already watching, using sync.Once per service
 	watchOnce, _ := c.watching.LoadOrStore(service, &sync.Once{})
 	watchOnce.(*sync.Once).Do(func() {
-		go c.watchEndpoints(context.Background(), service)
+		go c.watchEndpointsRetried(context.Background(), service)
 	})
 
 	// Return empty for now, next request will get the endpoints
