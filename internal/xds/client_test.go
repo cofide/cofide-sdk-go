@@ -5,6 +5,7 @@ package xds
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"testing"
@@ -82,6 +83,8 @@ func TestXDSClient_XDSComms(t *testing.T) {
 		{Resources: []*anypb.Any{cla2}},
 	}
 
+	mocked.errs = []error{errors.New("no spoons"), errors.New("lost my wallet")}
+
 	_, err = client.GetEndpoints("test-service")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "endpoints not yet discovered for test-service")
@@ -104,11 +107,19 @@ type MockAggregatedDiscoveryService struct {
 	discoveryv3.UnimplementedAggregatedDiscoveryServiceServer
 	req   *discovery.DiscoveryRequest
 	resps []*discovery.DiscoveryResponse
+	errs  []error
 }
 
 func (m *MockAggregatedDiscoveryService) StreamAggregatedResources(
 	stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesServer,
 ) error {
+	// Allow injection of errors
+	if len(m.errs) > 0 {
+		err := m.errs[0]
+		m.errs = m.errs[1:]
+		return err
+	}
+
 	req, err := stream.Recv()
 	if err != nil {
 		return err
