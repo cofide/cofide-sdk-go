@@ -43,14 +43,14 @@ func NewSPIREHelper(ctx context.Context) *SPIREHelper {
 }
 
 func (s *SPIREHelper) EnsureSPIRE() {
-	if s.X509Source != nil {
+	if s.readyCh != nil {
 		return
-	}
-	if s.backoff == nil {
-		s.backoff = backoff.NewBackoff()
 	}
 	if s.readyCh == nil {
 		s.readyCh = make(chan struct{})
+	}
+	if s.backoff == nil {
+		s.backoff = backoff.NewBackoff()
 	}
 
 	go func() {
