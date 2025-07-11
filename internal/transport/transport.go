@@ -11,16 +11,14 @@ import (
 	"net/http"
 
 	"github.com/cofide/cofide-sdk-go/internal/xds"
-	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
 type CofideTransport struct {
 	xdsClient     *xds.XDSClient
 	baseTransport http.RoundTripper
-	x509Source    *workloadapi.X509Source
 }
 
-func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config, x509Source *workloadapi.X509Source) *CofideTransport {
+func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTransport {
 	// Create a transport with a custom dialer
 	baseTransport := &http.Transport{
 		TLSClientConfig: tlsConfig,
@@ -54,7 +52,6 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config, x509Source
 	return &CofideTransport{
 		xdsClient:     client,
 		baseTransport: baseTransport,
-		x509Source:    x509Source,
 	}
 }
 

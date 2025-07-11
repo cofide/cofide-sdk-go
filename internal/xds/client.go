@@ -38,11 +38,6 @@ type Endpoint struct {
 	Weight int
 }
 
-type ClusterUpdate struct {
-	Service   string
-	Endpoints []Endpoint
-}
-
 func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
 	conn, err := grpc.NewClient(
 		cfg.ServerURI,
