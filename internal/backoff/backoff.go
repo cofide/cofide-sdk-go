@@ -4,7 +4,6 @@
 package backoff
 
 import (
-	"math"
 	"sync"
 	"time"
 )
@@ -51,10 +50,10 @@ func (b *Backoff) Duration() time.Duration {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	backoff := float64(b.n)
-	d := math.Pow(2, backoff) * float64(b.InitialDelay)
-	if d > float64(b.MaxDelay) {
-		d = float64(b.MaxDelay)
+	d := b.InitialDelay << b.n
+	// Check for overflow (d becomes non-positive) or if it exceeds MaxDelay.
+	if d < 0 || d > b.MaxDelay {
+		d = b.MaxDelay
 	}
 
 	b.n++

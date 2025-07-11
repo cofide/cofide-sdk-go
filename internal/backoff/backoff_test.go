@@ -4,6 +4,7 @@
 package backoff
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -38,4 +39,10 @@ func TestBackoff_maxDelay(t *testing.T) {
 	}
 	backoff.Reset()
 	assert.Equal(t, time.Second, backoff.Duration())
+}
+
+func TestBackoff_overflow(t *testing.T) {
+	backoff := NewBackoff(WithInitialDelay(math.MaxInt64-1), WithMaxDelay(math.MaxInt64))
+	assert.Equal(t, time.Duration(math.MaxInt64-1), backoff.Duration())
+	assert.Equal(t, time.Duration(math.MaxInt64), backoff.Duration())
 }
