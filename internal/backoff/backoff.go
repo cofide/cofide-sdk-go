@@ -51,14 +51,14 @@ func (b *Backoff) Duration() time.Duration {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	backoff := float64(b.n) + 1
+	backoff := float64(b.n)
 	d := math.Pow(2, backoff) * float64(b.InitialDelay)
 	if d > float64(b.MaxDelay) {
 		d = float64(b.MaxDelay)
 	}
 
 	b.n++
-	return time.Duration(d) * time.Second
+	return time.Duration(d)
 }
 
 // Reset resets the backoff's state.
