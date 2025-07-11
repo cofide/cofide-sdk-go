@@ -25,7 +25,7 @@ type Server struct {
 func NewServer(server *http.Server, opts ...ServerOption) *Server {
 	s := &Server{
 		upstreamHTTP: server,
-		SPIREHelper:  spirehelper.NewSPIREHelper(),
+		SPIREHelper:  spirehelper.NewSPIREHelper(context.Background()),
 	}
 
 	for _, opt := range opts {

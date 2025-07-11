@@ -28,14 +28,14 @@ type SPIREHelper struct {
 	backoff *backoff.Backoff
 }
 
-func NewSPIREHelper() *SPIREHelper {
+func NewSPIREHelper(ctx context.Context) *SPIREHelper {
 	spireAddr := defaultSPIRESocketAddr
 	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
 		spireAddr = addr
 	}
 
 	return &SPIREHelper{
-		Ctx:        context.Background(),
+		Ctx:        ctx,
 		SPIREAddr:  spireAddr,
 		Authorizer: tlsconfig.AuthorizeAny(),
 	}

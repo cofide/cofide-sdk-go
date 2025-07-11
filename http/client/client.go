@@ -4,6 +4,7 @@
 package cofide_http
 
 import (
+	"context"
 	"crypto/tls"
 	"io"
 	"log/slog"
@@ -79,7 +80,7 @@ type Client struct {
 
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
-		SPIREHelper: spirehelper.NewSPIREHelper(),
+		SPIREHelper: spirehelper.NewSPIREHelper(context.Background()),
 	}
 
 	for _, opt := range opts {
