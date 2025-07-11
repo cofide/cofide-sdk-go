@@ -4,7 +4,6 @@
 package cofide_http
 
 import (
-	"context"
 	"crypto/tls"
 	"io"
 	"log/slog"
@@ -19,8 +18,6 @@ import (
 	"github.com/cofide/cofide-sdk-go/internal/transport"
 	"github.com/cofide/cofide-sdk-go/internal/xds"
 )
-
-const defaultSPIRESocketAddr = "unix:///tmp/spire.sock"
 
 type Client struct {
 	// internal HTTP client
@@ -82,7 +79,7 @@ type Client struct {
 
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
-		SPIREHelper: newSPIREHelper(),
+		SPIREHelper: spirehelper.NewSPIREHelper(),
 	}
 
 	for _, opt := range opts {
@@ -124,19 +121,6 @@ func createTransport(tlsConfig *tls.Config) http.RoundTripper {
 
 func isXDSEnabled() bool {
 	return os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true"
-}
-
-func newSPIREHelper() *spirehelper.SPIREHelper {
-	spireAddr := defaultSPIRESocketAddr
-	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
-		spireAddr = addr
-	}
-
-	return &spirehelper.SPIREHelper{
-		Ctx:        context.Background(),
-		SPIREAddr:  spireAddr,
-		Authorizer: tlsconfig.AuthorizeAny(),
-	}
 }
 
 func (c *Client) getHttp() *http.Client {

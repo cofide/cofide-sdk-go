@@ -6,6 +6,7 @@ package spirehelper
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/cofide/cofide-sdk-go/internal/backoff"
@@ -13,6 +14,8 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
+
+const defaultSPIRESocketAddr = "unix:///tmp/spire.sock"
 
 type SPIREHelper struct {
 	X509Source *workloadapi.X509Source
@@ -23,6 +26,19 @@ type SPIREHelper struct {
 
 	readyCh chan struct{}
 	backoff *backoff.Backoff
+}
+
+func NewSPIREHelper() *SPIREHelper {
+	spireAddr := defaultSPIRESocketAddr
+	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
+		spireAddr = addr
+	}
+
+	return &SPIREHelper{
+		Ctx:        context.Background(),
+		SPIREAddr:  spireAddr,
+		Authorizer: tlsconfig.AuthorizeAny(),
+	}
 }
 
 func (s *SPIREHelper) EnsureSPIRE() {
