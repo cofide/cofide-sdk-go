@@ -94,7 +94,7 @@ func NewClient(opts ...ClientOption) *Client {
 	c.EnsureSPIRE()
 	c.WaitReady()
 
-	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
+	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.BundleSource, c.Authorizer)
 	c.Transport = createTransport(tlsConfig)
 
 	return c

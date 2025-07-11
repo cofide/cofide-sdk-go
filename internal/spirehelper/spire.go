@@ -15,9 +15,10 @@ import (
 )
 
 type SPIREHelper struct {
-	X509Source *workloadapi.X509Source
-	SPIREAddr  string
-	Ctx        context.Context
+	X509Source   *workloadapi.X509Source
+	BundleSource *workloadapi.BundleSource
+	SPIREAddr    string
+	Ctx          context.Context
 
 	Authorizer tlsconfig.Authorizer
 
@@ -52,6 +53,13 @@ func (s *SPIREHelper) EnsureSPIRE() {
 				time.Sleep(s.backoff.Duration())
 				continue
 			}
+
+			s.BundleSource, err = workloadapi.NewBundleSource(s.Ctx, workloadapi.WithClientOptions(workloadapi.WithAddr(s.SPIREAddr)))
+			if err != nil {
+				time.Sleep(s.backoff.Duration())
+				continue
+			}
+
 			s.backoff.Reset()
 
 			break
