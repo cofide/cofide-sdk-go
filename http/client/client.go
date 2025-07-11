@@ -5,11 +5,10 @@ package cofide_http
 
 import (
 	"crypto/tls"
+	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
 	"github.com/cofide/cofide-sdk-go/internal/spirehelper"
@@ -19,11 +18,19 @@ import (
 	"github.com/cofide/cofide-sdk-go/internal/xds"
 )
 
+const defaultXDSNodeID = "node"
+
 type Client struct {
 	// internal HTTP client
 	http *http.Client
 
 	*spirehelper.SPIREHelper
+
+	// xdsServerURI is an optional URI of an xDS server to use when resolving addresses.
+	xdsServerURI string
+
+	// xdsNodeID is an optional xDS node ID to use when resolving addresses.
+	xdsNodeID string
 
 	/** FROM THIS POINT ALL PROPERTIES COME FROM net/http **/
 
@@ -77,9 +84,10 @@ type Client struct {
 	Timeout time.Duration
 }
 
-func NewClient(opts ...ClientOption) *Client {
+func NewClient(opts ...ClientOption) (*Client, error) {
 	c := &Client{
 		SPIREHelper: spirehelper.NewSPIREHelper(),
+		xdsNodeID:   defaultXDSNodeID,
 	}
 
 	for _, opt := range opts {
@@ -92,35 +100,29 @@ func NewClient(opts ...ClientOption) *Client {
 	c.WaitReady()
 
 	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.BundleSource, c.Authorizer)
-	c.Transport = createTransport(tlsConfig)
-
-	return c
-}
-
-func createTransport(tlsConfig *tls.Config) http.RoundTripper {
-	if !isXDSEnabled() {
-		return &http.Transport{TLSClientConfig: tlsConfig}
+	var err error
+	c.Transport, err = c.initTransport(tlsConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	xdsServer := os.Getenv("EXPERIMENTAL_XDS_SERVER_URI")
-	if xdsServer == "" {
-		return &http.Transport{TLSClientConfig: tlsConfig}
+	return c, nil
+}
+
+func (c *Client) initTransport(tlsConfig *tls.Config) (http.RoundTripper, error) {
+	if c.xdsServerURI == "" {
+		return &http.Transport{TLSClientConfig: tlsConfig}, nil
 	}
 
 	xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
-		ServerURI: xdsServer,
-		NodeID:    "node",
+		ServerURI: c.xdsServerURI,
+		NodeID:    c.xdsNodeID,
 	})
 	if err != nil {
-		slog.Error("Failed to create xDS client, falling back to default transport", "error", err)
-		return &http.Transport{TLSClientConfig: tlsConfig}
+		return nil, fmt.Errorf("failed to create xDS client: %w", err)
 	}
 
-	return transport.NewCofideTransport(xdsClient, tlsConfig)
-}
-
-func isXDSEnabled() bool {
-	return os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true"
+	return transport.NewCofideTransport(xdsClient, tlsConfig), nil
 }
 
 func (c *Client) getHttp() *http.Client {
