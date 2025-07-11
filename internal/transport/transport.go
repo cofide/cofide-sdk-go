@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 
@@ -27,6 +28,7 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTra
 			// Extract host and port
 			host, _, err := net.SplitHostPort(addr)
 			if err != nil {
+				slog.Debug("Failed to split address", "addr", addr, "error", err)
 				// Fall back to standard dialing
 				dialer := &net.Dialer{}
 				return dialer.DialContext(ctx, network, addr)
@@ -35,6 +37,7 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTra
 			// Try to resolve endpoint
 			endpoints, err := client.GetEndpoints(host)
 			if err != nil || len(endpoints) == 0 {
+				slog.Debug("Failed to get endpoints", "host", host, "endpoints", endpoints, "error", err)
 				// Fall back to standard dialing
 				dialer := &net.Dialer{}
 				return dialer.DialContext(ctx, network, addr)
@@ -45,6 +48,7 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTra
 
 			// Dial using resolved endpoint
 			dialer := &net.Dialer{}
+			slog.Debug("Dialing endpoint discovered via xDS", "endpoint", endpoint)
 			return dialer.DialContext(ctx, network, fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port))
 		},
 	}

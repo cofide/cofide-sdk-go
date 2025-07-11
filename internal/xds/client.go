@@ -94,6 +94,7 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Debug("xDS watch complete")
 			return
 		default:
 			resp, err := stream.Recv()
@@ -122,6 +123,9 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 					}
 				}
 				c.endpoints.Store(serviceName, endpoints)
+				logger.Debug("Endpoints updated", slog.Any("endpoints", endpoints))
+			} else {
+				logger.Debug("No clusters in xDS response")
 			}
 		}
 
