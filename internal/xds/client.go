@@ -28,7 +28,6 @@ type XDSClient struct {
 
 type XDSClientConfig struct {
 	ServerURI string
-	Creds     grpc.DialOption
 	NodeID    string
 }
 
