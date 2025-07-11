@@ -28,7 +28,6 @@ type XDSClient struct {
 
 type XDSClientConfig struct {
 	ServerURI string
-	Creds     grpc.DialOption
 	NodeID    string
 }
 
@@ -36,11 +35,6 @@ type Endpoint struct {
 	Host   string
 	Port   int
 	Weight int
-}
-
-type ClusterUpdate struct {
-	Service   string
-	Endpoints []Endpoint
 }
 
 func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
@@ -62,20 +56,26 @@ func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
 }
 
 func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
+	// Clusters in Cofide Agent xDS have a _cluster suffix
+	xdsResourceName := fmt.Sprintf("%v_cluster", serviceName)
+
+	logger := slog.With(
+		slog.String("service", serviceName),
+		slog.String("cluster", xdsResourceName),
+		slog.String("node", c.nodeID),
+	)
+
 	stream, err := c.client.StreamAggregatedResources(ctx)
 	if err != nil {
-		slog.Error("failed to create xDS stream", "error", err)
+		logger.Error("Failed to create xDS stream", "error", err)
 		return
 	}
 
 	defer func() {
 		if err := stream.CloseSend(); err != nil {
-			slog.Error("error closing xDS stream", "error", err)
+			logger.Error("Error closing xDS stream", "error", err)
 		}
 	}()
-
-	// Clusters in Cofide Agent xDS have a _cluster suffix
-	xdsResourceName := fmt.Sprintf("%v_cluster", serviceName)
 
 	// Send EDS request
 	req := &discovery.DiscoveryRequest{
@@ -86,21 +86,19 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 		ResourceNames: []string{xdsResourceName},
 	}
 	if err := stream.Send(req); err != nil {
-		slog.Error("failed to send xDS discovery request", "error", err)
+		logger.Error("Failed to send xDS discovery request", "error", err)
 		return
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Debug("xDS watch complete")
 			return
 		default:
 			resp, err := stream.Recv()
 			if err != nil {
-				slog.Error("failed to receive xDS discovery response",
-					"service", serviceName,
-					"xdsResourceName", xdsResourceName,
-					"error", err)
+				logger.Error("Failed to receive xDS discovery response", "error", err)
 				return
 			}
 
@@ -108,10 +106,7 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 			if len(resp.Resources) > 0 {
 				var cla endpoint.ClusterLoadAssignment
 				if err := resp.Resources[0].UnmarshalTo(&cla); err != nil {
-					slog.Error("failed to unmarshal ClusterLoadAssignment",
-						"service", serviceName,
-						"xdsResourceName", xdsResourceName,
-						"error", err)
+					logger.Error("Failed to unmarshal ClusterLoadAssignment", "error", err)
 					continue
 				}
 
@@ -127,6 +122,9 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) {
 					}
 				}
 				c.endpoints.Store(serviceName, endpoints)
+				logger.Debug("Endpoints updated", slog.Any("endpoints", endpoints))
+			} else {
+				logger.Debug("No endpoints in xDS response")
 			}
 		}
 

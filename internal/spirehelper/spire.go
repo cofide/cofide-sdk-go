@@ -6,6 +6,7 @@ package spirehelper
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/cofide/cofide-sdk-go/internal/backoff"
@@ -14,15 +15,31 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
+const defaultSPIRESocketAddr = "unix:///tmp/spire.sock"
+
 type SPIREHelper struct {
-	X509Source *workloadapi.X509Source
-	SPIREAddr  string
-	Ctx        context.Context
+	X509Source   *workloadapi.X509Source
+	BundleSource *workloadapi.BundleSource
+	SPIREAddr    string
+	Ctx          context.Context
 
 	Authorizer tlsconfig.Authorizer
 
 	readyCh chan struct{}
 	backoff *backoff.Backoff
+}
+
+func NewSPIREHelper(ctx context.Context) *SPIREHelper {
+	spireAddr := defaultSPIRESocketAddr
+	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
+		spireAddr = addr
+	}
+
+	return &SPIREHelper{
+		Ctx:        ctx,
+		SPIREAddr:  spireAddr,
+		Authorizer: tlsconfig.AuthorizeAny(),
+	}
 }
 
 func (s *SPIREHelper) EnsureSPIRE() {
@@ -52,6 +69,13 @@ func (s *SPIREHelper) EnsureSPIRE() {
 				time.Sleep(s.backoff.Duration())
 				continue
 			}
+
+			s.BundleSource, err = workloadapi.NewBundleSource(s.Ctx, workloadapi.WithClientOptions(workloadapi.WithAddr(s.SPIREAddr)))
+			if err != nil {
+				time.Sleep(s.backoff.Duration())
+				continue
+			}
+
 			s.backoff.Reset()
 
 			break

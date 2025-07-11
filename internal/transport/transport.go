@@ -7,20 +7,18 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 
 	"github.com/cofide/cofide-sdk-go/internal/xds"
-	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
 type CofideTransport struct {
-	xdsClient     *xds.XDSClient
 	baseTransport http.RoundTripper
-	x509Source    *workloadapi.X509Source
 }
 
-func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config, x509Source *workloadapi.X509Source) *CofideTransport {
+func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config) *CofideTransport {
 	// Create a transport with a custom dialer
 	baseTransport := &http.Transport{
 		TLSClientConfig: tlsConfig,
@@ -29,6 +27,7 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config, x509Source
 			// Extract host and port
 			host, _, err := net.SplitHostPort(addr)
 			if err != nil {
+				slog.Debug("Failed to split address", "addr", addr, "error", err)
 				// Fall back to standard dialing
 				dialer := &net.Dialer{}
 				return dialer.DialContext(ctx, network, addr)
@@ -37,6 +36,7 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config, x509Source
 			// Try to resolve endpoint
 			endpoints, err := client.GetEndpoints(host)
 			if err != nil || len(endpoints) == 0 {
+				slog.Debug("Failed to get endpoints", "host", host, "endpoints", endpoints, "error", err)
 				// Fall back to standard dialing
 				dialer := &net.Dialer{}
 				return dialer.DialContext(ctx, network, addr)
@@ -47,14 +47,13 @@ func NewCofideTransport(client *xds.XDSClient, tlsConfig *tls.Config, x509Source
 
 			// Dial using resolved endpoint
 			dialer := &net.Dialer{}
+			slog.Debug("Dialing endpoint discovered via xDS", "endpoint", endpoint)
 			return dialer.DialContext(ctx, network, fmt.Sprintf("%s:%d", endpoint.Host, endpoint.Port))
 		},
 	}
 
 	return &CofideTransport{
-		xdsClient:     client,
 		baseTransport: baseTransport,
-		x509Source:    x509Source,
 	}
 }
 

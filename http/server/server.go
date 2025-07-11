@@ -7,7 +7,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"os"
 
 	"github.com/cofide/cofide-sdk-go/internal/spirehelper"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
@@ -26,15 +25,7 @@ type Server struct {
 func NewServer(server *http.Server, opts ...ServerOption) *Server {
 	s := &Server{
 		upstreamHTTP: server,
-		SPIREHelper: &spirehelper.SPIREHelper{
-			Ctx:        context.Background(),
-			SPIREAddr:  "unix:///tmp/spire.sock",
-			Authorizer: tlsconfig.AuthorizeAny(),
-		},
-	}
-
-	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
-		s.SPIREAddr = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+		SPIREHelper:  spirehelper.NewSPIREHelper(context.Background()),
 	}
 
 	for _, opt := range opts {

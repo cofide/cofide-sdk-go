@@ -15,13 +15,10 @@ import (
 
 	"github.com/cofide/cofide-sdk-go/internal/spirehelper"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
-	"github.com/spiffe/go-spiffe/v2/workloadapi"
 
 	"github.com/cofide/cofide-sdk-go/internal/transport"
 	"github.com/cofide/cofide-sdk-go/internal/xds"
 )
-
-const defaultSPIRESocketAddr = "unix:///tmp/spire.sock"
 
 type Client struct {
 	// internal HTTP client
@@ -83,7 +80,7 @@ type Client struct {
 
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
-		SPIREHelper: newSPIREHelper(),
+		SPIREHelper: spirehelper.NewSPIREHelper(context.Background()),
 	}
 
 	for _, opt := range opts {
@@ -95,13 +92,13 @@ func NewClient(opts ...ClientOption) *Client {
 	c.EnsureSPIRE()
 	c.WaitReady()
 
-	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.X509Source, c.Authorizer)
-	c.Transport = createTransport(tlsConfig, c.X509Source)
+	tlsConfig := tlsconfig.MTLSClientConfig(c.X509Source, c.BundleSource, c.Authorizer)
+	c.Transport = createTransport(tlsConfig)
 
 	return c
 }
 
-func createTransport(tlsConfig *tls.Config, x509Source *workloadapi.X509Source) http.RoundTripper {
+func createTransport(tlsConfig *tls.Config) http.RoundTripper {
 	if !isXDSEnabled() {
 		return &http.Transport{TLSClientConfig: tlsConfig}
 	}
@@ -116,28 +113,15 @@ func createTransport(tlsConfig *tls.Config, x509Source *workloadapi.X509Source) 
 		NodeID:    "node",
 	})
 	if err != nil {
-		slog.Error("failed to create xDS client, falling back to default transport", "error", err)
+		slog.Error("Failed to create xDS client, falling back to default transport", "error", err)
 		return &http.Transport{TLSClientConfig: tlsConfig}
 	}
 
-	return transport.NewCofideTransport(xdsClient, tlsConfig, x509Source)
+	return transport.NewCofideTransport(xdsClient, tlsConfig)
 }
 
 func isXDSEnabled() bool {
 	return os.Getenv("EXPERIMENTAL_ENABLE_XDS") == "true"
-}
-
-func newSPIREHelper() *spirehelper.SPIREHelper {
-	spireAddr := defaultSPIRESocketAddr
-	if addr := os.Getenv("SPIFFE_ENDPOINT_SOCKET"); addr != "" {
-		spireAddr = addr
-	}
-
-	return &spirehelper.SPIREHelper{
-		Ctx:        context.Background(),
-		SPIREAddr:  spireAddr,
-		Authorizer: tlsconfig.AuthorizeAny(),
-	}
 }
 
 func (c *Client) getHttp() *http.Client {
