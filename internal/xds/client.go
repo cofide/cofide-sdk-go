@@ -112,6 +112,8 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 
 	logger.Debug("Sent xDS discovery request")
 
+	// seedEndpoint tracks whether we have seen a valid endpoint.
+	var seedEndpoint bool
 	for {
 		select {
 		case <-ctx.Done():
@@ -129,28 +131,27 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 			}
 
 			// Update endpoints directly in cache
+			var endpoints []Endpoint
 			if len(resp.Resources) > 0 {
 				var cla endpoint.ClusterLoadAssignment
 				if err := resp.Resources[0].UnmarshalTo(&cla); err != nil {
 					logger.Error("Failed to unmarshal ClusterLoadAssignment", "error", err)
-					continue
+				} else {
+					endpoints = claToEndpoints(&cla)
+					seedEndpoint = true
+					logger.Debug("xDS endpoints updated", slog.Any("endpoints", endpoints))
 				}
-
-				endpoints := make([]Endpoint, 0)
-				for _, locality := range cla.Endpoints {
-					for _, endpoint := range locality.LbEndpoints {
-						addr := endpoint.GetEndpoint().Address.GetSocketAddress()
-						endpoints = append(endpoints, Endpoint{
-							Host:   addr.GetAddress(),
-							Port:   int(addr.GetPortValue()),
-							Weight: int(endpoint.GetLoadBalancingWeight().GetValue()),
-						})
-					}
-				}
-				c.endpoints.Store(serviceName, endpoints)
-				logger.Debug("xDS endpoints updated", slog.Any("endpoints", endpoints))
 			} else {
 				logger.Debug("No endpoints in xDS response")
+			}
+			c.endpoints.Store(serviceName, endpoints)
+
+			// FIXME: workaround xDS stream issue?
+			if len(endpoints) == 0 {
+				if seedEndpoint {
+					return nil // Reset backoff
+				}
+				return errors.New("no endpoints in xDS response")
 			}
 		}
 	}
@@ -170,4 +171,21 @@ func (c *XDSClient) GetEndpoints(service string) ([]Endpoint, error) {
 
 	// Return empty for now, next request will get the endpoints
 	return nil, fmt.Errorf("endpoints not yet discovered for %s", service)
+}
+
+// claToEndpoints converts a ClusterLoadAssignment to a slice of Endpoint.
+func claToEndpoints(cla *endpoint.ClusterLoadAssignment) []Endpoint {
+	endpoints := make([]Endpoint, 0)
+
+	for _, locality := range cla.Endpoints {
+		for _, endpoint := range locality.LbEndpoints {
+			addr := endpoint.GetEndpoint().Address.GetSocketAddress()
+			endpoints = append(endpoints, Endpoint{
+				Host:   addr.GetAddress(),
+				Port:   int(addr.GetPortValue()),
+				Weight: int(endpoint.GetLoadBalancingWeight().GetValue()),
+			})
+		}
+	}
+	return endpoints
 }
