@@ -23,6 +23,7 @@ import (
 )
 
 type XDSClient struct {
+	logger    *slog.Logger
 	conn      *grpc.ClientConn
 	client    discovery.AggregatedDiscoveryServiceClient
 	nodeID    string
@@ -31,6 +32,7 @@ type XDSClient struct {
 }
 
 type XDSClientConfig struct {
+	Logger    *slog.Logger
 	ServerURI string
 	NodeID    string
 }
@@ -41,16 +43,18 @@ type Endpoint struct {
 	Weight int
 }
 
-func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
+func NewXDSClient(cfg XDSClientConfig, opts ...grpc.DialOption) (*XDSClient, error) {
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials())) // insecure connection
 	conn, err := grpc.NewClient(
 		cfg.ServerURI,
-		grpc.WithTransportCredentials(insecure.NewCredentials()), // insecure connection
+		opts...,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	client := &XDSClient{
+		logger: cfg.Logger.With(slog.String("node", cfg.NodeID)),
 		conn:   conn,
 		client: discovery.NewAggregatedDiscoveryServiceClient(conn),
 		nodeID: cfg.NodeID,
@@ -60,9 +64,14 @@ func NewXDSClient(cfg XDSClientConfig) (*XDSClient, error) {
 }
 
 func (c *XDSClient) watchEndpointsRetried(ctx context.Context, serviceName string) {
+	logger := c.logger.With(slog.String("service", serviceName))
 	backoff := backoff.NewBackoff()
 	for {
-		if err := c.watchEndpoints(ctx, serviceName); err == nil {
+		resetBackoff, err := c.watchEndpoints(ctx, logger, serviceName)
+		if err != nil {
+			logger.Error("xDS watch failed, retrying", "error", err)
+		}
+		if resetBackoff {
 			backoff.Reset()
 		}
 
@@ -74,21 +83,18 @@ func (c *XDSClient) watchEndpointsRetried(ctx context.Context, serviceName strin
 	}
 }
 
-func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) error {
+// watchEndpoints watches endpoints for a service using an ADS stream.
+// The endpoints map is updated with the current state of the endpoints.
+// watchEndpoints returns if the stream is closed or any send/receive request fails.
+// It returns a bool indicating whether the backoff in the caller should be reset, as well as an error.
+func (c *XDSClient) watchEndpoints(ctx context.Context, logger *slog.Logger, serviceName string) (bool, error) {
 	// Clusters in Cofide Agent xDS have a _cluster suffix
 	xdsResourceName := fmt.Sprintf("%v_cluster", serviceName)
-
-	logger := slog.With(
-		slog.String("service", serviceName),
-		slog.String("resource", xdsResourceName),
-		slog.String("node", c.nodeID),
-	)
 
 	logger.Debug("Connecting to xDS server")
 	stream, err := c.client.StreamAggregatedResources(ctx)
 	if err != nil {
-		logger.Error("Failed to create xDS stream", "error", err)
-		return err
+		return false, fmt.Errorf("Failed to create xDS stream: %w", err)
 	}
 
 	defer func() {
@@ -97,7 +103,6 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 		}
 	}()
 
-	// Send EDS request
 	req := &discovery.DiscoveryRequest{
 		Node: &core.Node{
 			Id: c.nodeID,
@@ -105,53 +110,53 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 		TypeUrl:       resource.EndpointType, // Type URL for endpoints
 		ResourceNames: []string{xdsResourceName},
 	}
-	if err := stream.Send(req); err != nil {
-		logger.Error("Failed to send xDS discovery request", "error", err)
-		return err
-	}
 
-	logger.Debug("Sent xDS discovery request")
-
+	// resetBackoff tracks whether we have seen a valid endpoint, and should reset the backoff.
+	var resetBackoff bool
 	for {
+		// Send EDS request
+		if err := stream.Send(req); err != nil {
+			return resetBackoff, fmt.Errorf("failed to send xDS discovery request: %w", err)
+		}
+
+		logger.Debug("Sent xDS discovery request")
+
 		select {
 		case <-ctx.Done():
 			logger.Debug("xDS watch cancelled")
-			return nil
+			return resetBackoff, nil
 		default:
 			resp, err := stream.Recv()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					logger.Debug("xDS watch stream ended")
-					return nil
+					resetBackoff = true
+				} else {
+					err = fmt.Errorf("failed to receive xDS discovery response: %w", err)
 				}
-				logger.Error("Failed to receive xDS discovery response", "error", err)
-				return err
+				return resetBackoff, err
 			}
 
+			resetBackoff = true
+
+			// Update the last seen version and nonce in the request.
+			req.VersionInfo = resp.VersionInfo
+			req.ResponseNonce = resp.Nonce
+
 			// Update endpoints directly in cache
+			endpoints := []Endpoint{}
 			if len(resp.Resources) > 0 {
 				var cla endpoint.ClusterLoadAssignment
 				if err := resp.Resources[0].UnmarshalTo(&cla); err != nil {
 					logger.Error("Failed to unmarshal ClusterLoadAssignment", "error", err)
-					continue
+				} else {
+					endpoints = claToEndpoints(&cla)
+					logger.Debug("xDS endpoints updated", slog.Any("endpoints", endpoints))
 				}
-
-				endpoints := make([]Endpoint, 0)
-				for _, locality := range cla.Endpoints {
-					for _, endpoint := range locality.LbEndpoints {
-						addr := endpoint.GetEndpoint().Address.GetSocketAddress()
-						endpoints = append(endpoints, Endpoint{
-							Host:   addr.GetAddress(),
-							Port:   int(addr.GetPortValue()),
-							Weight: int(endpoint.GetLoadBalancingWeight().GetValue()),
-						})
-					}
-				}
-				c.endpoints.Store(serviceName, endpoints)
-				logger.Debug("xDS endpoints updated", slog.Any("endpoints", endpoints))
 			} else {
 				logger.Debug("No endpoints in xDS response")
 			}
+			c.endpoints.Store(serviceName, endpoints)
 		}
 	}
 }
@@ -170,4 +175,21 @@ func (c *XDSClient) GetEndpoints(service string) ([]Endpoint, error) {
 
 	// Return empty for now, next request will get the endpoints
 	return nil, fmt.Errorf("endpoints not yet discovered for %s", service)
+}
+
+// claToEndpoints converts a ClusterLoadAssignment to a slice of Endpoint.
+func claToEndpoints(cla *endpoint.ClusterLoadAssignment) []Endpoint {
+	endpoints := make([]Endpoint, 0)
+
+	for _, locality := range cla.Endpoints {
+		for _, endpoint := range locality.LbEndpoints {
+			addr := endpoint.GetEndpoint().Address.GetSocketAddress()
+			endpoints = append(endpoints, Endpoint{
+				Host:   addr.GetAddress(),
+				Port:   int(addr.GetPortValue()),
+				Weight: int(endpoint.GetLoadBalancingWeight().GetValue()),
+			})
+		}
+	}
+	return endpoints
 }
