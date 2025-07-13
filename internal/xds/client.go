@@ -97,7 +97,6 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 		}
 	}()
 
-	// Send EDS request
 	req := &discovery.DiscoveryRequest{
 		Node: &core.Node{
 			Id: c.nodeID,
@@ -105,16 +104,18 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 		TypeUrl:       resource.EndpointType, // Type URL for endpoints
 		ResourceNames: []string{xdsResourceName},
 	}
-	if err := stream.Send(req); err != nil {
-		logger.Error("Failed to send xDS discovery request", "error", err)
-		return err
-	}
-
-	logger.Debug("Sent xDS discovery request")
 
 	// seedEndpoint tracks whether we have seen a valid endpoint.
-	var seedEndpoint bool
+	//var seedEndpoint bool
 	for {
+		// Send EDS request
+		if err := stream.Send(req); err != nil {
+			logger.Error("Failed to send xDS discovery request", "error", err)
+			return err
+		}
+
+		logger.Debug("Sent xDS discovery request")
+
 		select {
 		case <-ctx.Done():
 			logger.Debug("xDS watch cancelled")
@@ -130,6 +131,10 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 				return err
 			}
 
+			// Update the last seen version and nonce in the request.
+			req.VersionInfo = resp.VersionInfo
+			req.ResponseNonce = resp.Nonce
+
 			// Update endpoints directly in cache
 			var endpoints []Endpoint
 			if len(resp.Resources) > 0 {
@@ -138,7 +143,7 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 					logger.Error("Failed to unmarshal ClusterLoadAssignment", "error", err)
 				} else {
 					endpoints = claToEndpoints(&cla)
-					seedEndpoint = true
+					//seedEndpoint = true
 					logger.Debug("xDS endpoints updated", slog.Any("endpoints", endpoints))
 				}
 			} else {
@@ -146,13 +151,13 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, serviceName string) erro
 			}
 			c.endpoints.Store(serviceName, endpoints)
 
-			// FIXME: workaround xDS stream issue?
-			if len(endpoints) == 0 {
-				if seedEndpoint {
-					return nil // Reset backoff
-				}
-				return errors.New("no endpoints in xDS response")
-			}
+			// // FIXME: workaround xDS stream issue?
+			// if len(resp.Resources) == 0 {
+			// 	if seedEndpoint {
+			// 		return nil // Reset backoff
+			// 	}
+			// 	return errors.New("no endpoints in xDS response")
+			// }
 		}
 	}
 }

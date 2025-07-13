@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -40,6 +41,10 @@ func TestXDSClient_NewXDSClient(t *testing.T) {
 }
 
 func TestXDSClient_XDSComms(t *testing.T) {
+	opts := &slog.HandlerOptions{Level: slog.LevelDebug}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, opts))
+	slog.SetDefault(logger)
+
 	client, lis, mocked := setupBufconn()
 	defer lis.Close()
 
@@ -120,16 +125,17 @@ func (m *MockAggregatedDiscoveryService) StreamAggregatedResources(
 		return err
 	}
 
-	req, err := stream.Recv()
-	if err != nil {
-		return err
-	}
-
-	// Record the request
-	m.req = req
-
 	// Stream each response in turn
 	for _, resp := range m.resps {
+		req, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+
+		// Record the request
+		// TODO: record all?
+		m.req = req
+
 		if err := stream.Send(resp); err != nil {
 			return err
 		}
