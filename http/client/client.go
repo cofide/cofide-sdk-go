@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -116,6 +117,7 @@ func (c *Client) initTransport(tlsConfig *tls.Config) (http.RoundTripper, error)
 	}
 
 	xdsClient, err := xds.NewXDSClient(xds.XDSClientConfig{
+		Logger:    slog.Default(),
 		ServerURI: c.xdsServerURI,
 		NodeID:    c.xdsNodeID,
 	})
