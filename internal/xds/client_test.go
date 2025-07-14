@@ -188,6 +188,37 @@ func TestXDSClient_GetEndpoints_sendError(t *testing.T) {
 	assertEndpoints(t, client, endpoints)
 }
 
+func TestXDSClient_GetEndpoints_unmarshallError(t *testing.T) {
+	client, lis, mocked := setupBufconn(t)
+	defer lis.Close()
+
+	// First call to GetEndpoints starts watchEndpoints.
+	_, err := client.GetEndpoints("test-service")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "endpoints not yet discovered for test-service")
+
+	// First response has a single endpoint.
+	endpoints := []Endpoint{{Host: "1.2.3.4", Port: 4321, Weight: 42}}
+	cla, err := makeCLA(endpoints)
+	require.NoError(t, err)
+
+	mocked.respond(&discovery.DiscoveryResponse{Resources: []*anypb.Any{cla}})
+
+	assertEndpoints(t, client, endpoints)
+
+	// Second response is an unexpected type.
+	notCLA, err := anypb.New(&endpoint.LbEndpoint{})
+	require.NoError(t, err)
+
+	mocked.respond(&discovery.DiscoveryResponse{Resources: []*anypb.Any{notCLA}})
+
+	// Send an error, so that we know the client has seen the invalid response.
+	mocked.error(errors.New("dummy"))
+
+	// The invalid response should not modify the previously seen endpoints.
+	assertEndpoints(t, client, endpoints)
+}
+
 // makeCLA returns a ClusterLoadAssignment for a slice of Endpoint, encoded as an anypb.Any.
 func makeCLA(endpoints []Endpoint) (*anypb.Any, error) {
 	localityEps := []*endpoint.LocalityLbEndpoints{}
@@ -298,7 +329,9 @@ func setupBufconn(t *testing.T, opts ...grpc.DialOption) (*XDSClient, *bufconn.L
 	discoveryv3.RegisterAggregatedDiscoveryServiceServer(srv, mockADSService)
 
 	go func() {
-		_ = srv.Serve(lis)
+		if err := srv.Serve(lis); err != nil {
+			require.ErrorContains(t, err, "closed")
+		}
 	}()
 
 	cfg := XDSClientConfig{
