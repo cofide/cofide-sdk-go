@@ -149,6 +149,7 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, logger *slog.Logger, ser
 				var cla endpoint.ClusterLoadAssignment
 				if err := resp.Resources[0].UnmarshalTo(&cla); err != nil {
 					logger.Error("Failed to unmarshal ClusterLoadAssignment", "error", err)
+					continue
 				} else {
 					endpoints = claToEndpoints(&cla)
 					logger.Debug("xDS endpoints updated", slog.Any("endpoints", endpoints))
