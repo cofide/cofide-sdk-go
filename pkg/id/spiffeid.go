@@ -123,6 +123,12 @@ func (s *SPIFFEID) String() string {
 	return s.id.String()
 }
 
+// EXPERIMENTAL: Return a WIMSE compliant identifier
+func (s *SPIFFEID) WIMSEIDString() string {
+	spiffeID := s.String()
+	return "wimse://" + strings.TrimPrefix(spiffeID, "spiffe://")
+}
+
 // ToSpiffeID returns a [spiffeid.ID] representation of the SPIFFEID.
 func (s *SPIFFEID) ToSpiffeID() spiffeid.ID {
 	return s.id
