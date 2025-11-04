@@ -133,7 +133,25 @@ func TestNewID(t *testing.T) {
 }
 
 func TestWIMSEID(t *testing.T) {
-	spiffeID, err := NewID("example.org", map[string]string{"foo": "bar"})
-	require.NoError(t, err)
-	assert.Equal(t, "wimse://example.org/foo/bar", spiffeID.WIMSEIDString())
+	tests := []struct {
+		name string
+		kv   map[string]string
+		want string
+	}{
+		{
+			name: "basic",
+			kv:   map[string]string{"foo": "bar"},
+			want: "wimse://example.org/foo/bar",
+		},
+		{
+			name: "empty",
+			kv:   map[string]string{},
+			want: "wimse://example.org",
+		},
+	}
+	for _, tt := range tests {
+		spiffeID, err := NewID("example.org", tt.kv)
+		require.NoError(t, err)
+		assert.Equal(t, tt.want, spiffeID.WIMSEIDString())
+	}
 }
