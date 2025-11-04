@@ -123,6 +123,11 @@ func (s *SPIFFEID) String() string {
 	return s.id.String()
 }
 
+// EXPERIMENTAL: Return a WIMSE compliant identifier
+func (s *SPIFFEID) WIMSEIDString() string {
+	return "wimse://" + s.TrustDomain() + s.id.Path()
+}
+
 // ToSpiffeID returns a [spiffeid.ID] representation of the SPIFFEID.
 func (s *SPIFFEID) ToSpiffeID() spiffeid.ID {
 	return s.id

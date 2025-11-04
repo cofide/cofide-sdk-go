@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseID(t *testing.T) {
@@ -127,5 +129,29 @@ func TestNewID(t *testing.T) {
 				t.Errorf("NewID() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestWIMSEID(t *testing.T) {
+	tests := []struct {
+		name string
+		kv   map[string]string
+		want string
+	}{
+		{
+			name: "basic",
+			kv:   map[string]string{"foo": "bar"},
+			want: "wimse://example.org/foo/bar",
+		},
+		{
+			name: "empty",
+			kv:   map[string]string{},
+			want: "wimse://example.org",
+		},
+	}
+	for _, tt := range tests {
+		spiffeID, err := NewID("example.org", tt.kv)
+		require.NoError(t, err)
+		assert.Equal(t, tt.want, spiffeID.WIMSEIDString())
 	}
 }
