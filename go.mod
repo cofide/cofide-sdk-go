@@ -1,6 +1,6 @@
 module github.com/cofide/cofide-sdk-go
 
-go 1.24.9
+go 1.25.7
 
 require (
 	github.com/envoyproxy/go-control-plane v0.13.4
