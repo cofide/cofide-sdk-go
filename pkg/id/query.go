@@ -141,7 +141,7 @@ func Not(f MatchFunc) MatchFunc {
 	return func(kv map[string]string) error {
 		err := f(kv)
 		if err == nil {
-			return errors.New("Did not receive an error in NOT call")
+			return errors.New("did not receive an error in NOT call")
 		}
 
 		return nil

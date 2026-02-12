@@ -15,7 +15,6 @@ import (
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
-	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -260,7 +259,7 @@ func assertEndpoints(t *testing.T, client *XDSClient, endpoints []Endpoint) {
 }
 
 type MockAggregatedDiscoveryService struct {
-	discoveryv3.UnimplementedAggregatedDiscoveryServiceServer
+	discovery.UnimplementedAggregatedDiscoveryServiceServer
 	t      *testing.T
 	reqs   []*discovery.DiscoveryRequest
 	respCh chan *discovery.DiscoveryResponse
@@ -270,13 +269,13 @@ type MockAggregatedDiscoveryService struct {
 func newMockAggregatedDiscoveryService(t *testing.T) *MockAggregatedDiscoveryService {
 	return &MockAggregatedDiscoveryService{
 		t:      t,
-		respCh: make(chan *discoveryv3.DiscoveryResponse),
+		respCh: make(chan *discovery.DiscoveryResponse),
 		errCh:  make(chan error),
 	}
 }
 
 func (m *MockAggregatedDiscoveryService) StreamAggregatedResources(
-	stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesServer,
+	stream discovery.AggregatedDiscoveryService_StreamAggregatedResourcesServer,
 ) error {
 	for {
 		// Wait for a DiscoveryRequest
@@ -326,7 +325,7 @@ func setupBufconn(t *testing.T, opts ...grpc.DialOption) (*XDSClient, *bufconn.L
 	lis := bufconn.Listen(1024 * 1024)
 	srv := grpc.NewServer()
 	mockADSService := newMockAggregatedDiscoveryService(t)
-	discoveryv3.RegisterAggregatedDiscoveryServiceServer(srv, mockADSService)
+	discovery.RegisterAggregatedDiscoveryServiceServer(srv, mockADSService)
 
 	go func() {
 		if err := srv.Serve(lis); err != nil {
