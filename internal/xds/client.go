@@ -94,7 +94,7 @@ func (c *XDSClient) watchEndpoints(ctx context.Context, logger *slog.Logger, ser
 	logger.Debug("Connecting to xDS server")
 	stream, err := c.client.StreamAggregatedResources(ctx)
 	if err != nil {
-		return false, fmt.Errorf("Failed to create xDS stream: %w", err)
+		return false, fmt.Errorf("failed to create xDS stream: %w", err)
 	}
 
 	defer func() {
