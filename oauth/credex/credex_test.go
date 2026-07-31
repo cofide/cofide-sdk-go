@@ -69,6 +69,25 @@ func TestTokenSourceExchange(t *testing.T) {
 	assert.Equal(t, []string{server.URL}, source.audiences())
 }
 
+func TestTokenSourceSeparateJWTSVIDAudience(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"downstream-token","token_type":"Bearer","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	source := newFakeSVIDSource(t)
+	tokenSource, err := (&credex.Config{
+		TokenURL:        server.URL,
+		JWTSVIDAudience: "https://credex.example.com/token",
+		Audience:        "legacy-api",
+	}).TokenSource(t.Context(), source)
+	require.NoError(t, err)
+
+	_, err = tokenSource.Token()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://credex.example.com/token"}, source.audiences())
+}
+
 func TestTokenSourceRefreshesExpiringToken(t *testing.T) {
 	var mu sync.Mutex
 	requests := 0

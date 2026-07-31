@@ -37,6 +37,12 @@ type Config struct {
 	// TokenURL is the Credex OAuth token endpoint.
 	TokenURL string
 
+	// JWTSVIDAudience is the audience used when fetching the JWT-SVID that
+	// authenticates the workload to Credex. When empty, TokenURL is used. Set
+	// this when the externally advertised token endpoint differs from the URL
+	// used to reach Credex from the workload's network.
+	JWTSVIDAudience string
+
 	// Audience is the target audience requested from the downstream
 	// authorization server. Credex uses it, together with Scopes and the
 	// workload identity, when selecting an exchange policy.
@@ -77,12 +83,13 @@ func (c *Config) TokenSource(ctx context.Context, source jwtsvid.Source) (oauth2
 	}
 
 	sourceImpl := &tokenSource{
-		ctx:        ctx,
-		svidSource: source,
-		httpClient: httpClient,
-		tokenURL:   c.TokenURL,
-		audience:   c.Audience,
-		scopes:     append([]string(nil), c.Scopes...),
+		ctx:             ctx,
+		svidSource:      source,
+		httpClient:      httpClient,
+		tokenURL:        c.TokenURL,
+		jwtSVIDAudience: c.jwtSVIDAudience(),
+		audience:        c.Audience,
+		scopes:          append([]string(nil), c.Scopes...),
 	}
 
 	earlyExpiry := c.EarlyExpiry
@@ -91,6 +98,13 @@ func (c *Config) TokenSource(ctx context.Context, source jwtsvid.Source) (oauth2
 	}
 
 	return oauth2.ReuseTokenSourceWithExpiry(nil, sourceImpl, earlyExpiry), nil
+}
+
+func (c *Config) jwtSVIDAudience() string {
+	if c.JWTSVIDAudience != "" {
+		return c.JWTSVIDAudience
+	}
+	return c.TokenURL
 }
 
 // Client returns an HTTP client which obtains bearer tokens from Credex and
@@ -132,16 +146,17 @@ func (c *Config) validate() error {
 }
 
 type tokenSource struct {
-	ctx        context.Context
-	svidSource jwtsvid.Source
-	httpClient *http.Client
-	tokenURL   string
-	audience   string
-	scopes     []string
+	ctx             context.Context
+	svidSource      jwtsvid.Source
+	httpClient      *http.Client
+	tokenURL        string
+	jwtSVIDAudience string
+	audience        string
+	scopes          []string
 }
 
 func (s *tokenSource) Token() (*oauth2.Token, error) {
-	svid, err := s.svidSource.FetchJWTSVID(s.ctx, jwtsvid.Params{Audience: s.tokenURL})
+	svid, err := s.svidSource.FetchJWTSVID(s.ctx, jwtsvid.Params{Audience: s.jwtSVIDAudience})
 	if err != nil {
 		return nil, fmt.Errorf("credex: fetching JWT-SVID: %w", err)
 	}
