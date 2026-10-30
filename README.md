@@ -19,10 +19,6 @@ SPIFFE IDs.
 - **Endpoint discovery** (experimental): resolve the client's upstream hosts through an
   xDS server.
 
-Credex token exchange, renewable bearer credentials, and the identity sources and
-integrations of [cofide-sdk-python](https://github.com/cofide/cofide-sdk-python) are not
-yet available in Go.
-
 ## Usage
 
 Call a server over mutual TLS, authorizing it by SPIFFE ID:
