@@ -152,6 +152,8 @@ when none are known, the client dials the host directly.
 
 ## Development
 
+Requires [`just`](https://github.com/casey/just) and [`golangci-lint`](https://golangci-lint.run/).
+
 ```sh
 just test        # run the tests
 just test-race   # with the race detector
