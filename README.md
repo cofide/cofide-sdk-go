@@ -145,7 +145,7 @@ The SDK retries the Workload API with backoff until it issues an X.509-SVID.
 
 ### Endpoint discovery
 
-With `WithXDS`, the client subscribes to the xDS server's endpoints for each host it
+With `WithXDS`, the client subscribes to a local Cofide Agent's xDS server's endpoints for each host it
 calls (cluster `<host>_cluster`). It dials a discovered endpoint and keeps the hostname
 for TLS. Discovery starts on the first request to a host, so until endpoints arrive, or
 when none are known, the client dials the host directly.
