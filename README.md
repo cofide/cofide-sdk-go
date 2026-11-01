@@ -92,9 +92,8 @@ the workload's own SPIFFE ID with `GetIdentity()`.
 
 ## SPIFFE IDs
 
-The `pkg/id` package treats a SPIFFE ID's path as key/value pairs:
-`spiffe://<trust domain>/<key 1>/<value 1>/<key 2>/<value 2>`. Verifiers should check the
-trust domain and the keys they need, and ignore other keys.
+A common convention for SPIFFE ID paths is for them to be key/value pairs `spiffe://<trust domain>/<key 1>/<value 1>/<key 2>/<value 2>`.
+The `pkg/id` provides utilities to construct, parse and verify the path of such a SPIFFE ID.
 
 ```go
 sid, err := id.NewID("example.org", map[string]string{"ns": "production", "sa": "billing"})
