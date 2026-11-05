@@ -1,9 +1,5 @@
 # cofide-sdk-go
 
-Go SDK for workloads that authenticate with [SPIFFE](https://spiffe.io/) identity. It
-wraps `net/http` clients and servers with mutual TLS using the workload's X.509-SVID
-from the SPIFFE Workload API, and adds helpers for building, parsing, and authorizing
-SPIFFE IDs.
 Go SDK from [Cofide](https://www.cofide.io/) for workloads that authenticate with
 [SPIFFE](https://spiffe.io/) identity. It provides an HTTP client and server that use
 mutual TLS with the workload's X.509-SVID from the SPIFFE Workload API, and helpers for
