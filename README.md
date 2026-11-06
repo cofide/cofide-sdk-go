@@ -20,6 +20,14 @@ Cofide Agent.
 - **Endpoint discovery** (experimental): resolve the client's upstream hosts through an
   xDS server.
 
+## Install
+
+Requires Go 1.26.8 or later.
+
+```sh
+go get github.com/cofide/cofide-sdk-go
+```
+
 ## Usage
 
 Call a server over mutual TLS, authorizing it by SPIFFE ID:
@@ -68,6 +76,7 @@ import (
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/things", func(w http.ResponseWriter, r *http.Request) {
+		// The SDK requires and verifies a client SVID during the handshake.
 		peer, err := x509svid.IDFromCert(r.TLS.PeerCertificates[0])
 		if err != nil {
 			http.Error(w, "not an X.509-SVID", http.StatusUnauthorized)
@@ -94,7 +103,7 @@ the workload's own SPIFFE ID with `GetIdentity()`.
 ## SPIFFE IDs
 
 A common convention for SPIFFE ID paths is for them to be key/value pairs `spiffe://<trust domain>/<key 1>/<value 1>/<key 2>/<value 2>`.
-The `pkg/id` provides utilities to construct, parse and verify the path of such a SPIFFE ID.
+The `pkg/id` package provides utilities to construct, parse and verify the path of such a SPIFFE ID.
 
 ```go
 sid, err := id.NewID("example.org", map[string]string{"ns": "production", "sa": "billing"})
@@ -120,13 +129,10 @@ err = sid.Matches(
 [`tlsconfig.Authorizer`](https://pkg.go.dev/github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig#Authorizer)
 for use outside this SDK. `WithSVIDMatch` uses it. All matchers must match.
 
-## Install
-
-Requires Go 1.26 or later.
-
-```sh
-go get github.com/cofide/cofide-sdk-go
-```
+Matching only applies to key/value paths. An ID whose path does not have an even number
+of segments, such as `spiffe://example.org/billing`, fails `Matches` with an error
+before any matcher runs, even `Not` or `IsEmpty`. `AuthorizeMatch` and `WithSVIDMatch`
+therefore reject such peers whatever the matchers are.
 
 ## Configuration
 
@@ -146,10 +152,11 @@ The SDK retries the Workload API with backoff until it issues an X.509-SVID.
 
 ### Endpoint discovery
 
-With `WithXDS`, the client subscribes to a local Cofide Agent's xDS server's endpoints to
-discover endpoints for [`FederatedServices`](https://docs.cofide.dev/workloads/federated-services/). 
-It dials a discovered endpoint and keeps the hostname for TLS. Discovery starts on the first request 
-to a host, so until endpoints arrive, or when none are known, the client dials the host directly.
+With `WithXDS`, the client subscribes to a local Cofide Agent's xDS server to discover
+endpoints for [`FederatedServices`](https://docs.cofide.dev/workloads/federated-services/).
+It dials a discovered endpoint and keeps the hostname for TLS. Discovery starts on the
+first request to a host, so until endpoints arrive, or when none are known, the client
+dials the host directly.
 
 ## Development
 
