@@ -161,7 +161,7 @@ just test-race   # with the race detector
 just lint        # golangci-lint
 ```
 
-## Licence
+## License
 
 Apache-2.0. See [LICENSE](LICENSE).
 
